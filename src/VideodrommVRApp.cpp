@@ -1,174 +1,5 @@
-#include "cinder/app/App.h"
-#include "cinder/app/RendererGl.h"
-#include "cinder/gl/gl.h"
-#include "cinder/AxisAlignedBox.h"
-#include "cinder/Log.h"
-#include "cinder/Rand.h"
-#include "cinder/Sphere.h"
-#include "cinder/Timeline.h"
+#include "VideodrommVRApp.h"
 
-#include "cinder/vr/vr.h"
-// Settings
-#include "VDSettings.h"
-// Session
-#include "VDSession.h"
-// Animation
-#include "VDAnimation.h"
-
-#include "VDTexture.h"
-
-using namespace ci;
-using namespace ci::app;
-using namespace std;
-using namespace VideoDromm;
-
-class UiIntersectable;
-using UiIntersectablePtr = std::shared_ptr<UiIntersectable>;
-
-//! \class UiIntersectable
-//!
-//!
-class UiIntersectable {
-public:
-
-	virtual bool intersects(const ci::Ray &ray) const = 0;
-	virtual void draw() = 0;
-
-	bool getFocused() const {
-		return mFocused;
-	}
-
-	void setFocused(bool value) {
-		if (value != mFocused) {
-			mFocused = value;
-			float target = (mFocused ? 1.0f : 0.0f);
-			ci::app::App::get()->timeline().apply(&mFocusedValue, target, 0.25f);
-		}
-	}
-
-	bool getSelected() const {
-		return mSelected;
-	}
-
-	virtual void setSelected(bool value) {
-		if (value != mSelected) {
-			mSelected = value;
-			float target = (mSelected ? 1.0f : 0.0f);
-			ci::app::App::get()->timeline().apply(&mSelectedValue, target, 0.25f);
-		}
-	}
-
-	ColorA getColor() const {
-		float t = mSelectedValue.value();
-		Color color = (1.0f - t)*Color(0.4f, 0.4f, 0.42f) + t*Color(0.95f, 0.5f, 0.0f);
-		t = mFocusedValue.value();
-		color = (1.0f - t)*color + t*Color(0.9f, 0.9f, 0.0f);
-		return ColorA(color);
-	}
-
-	const ci::vec3& getPosition() const {
-		return mPosition;
-	}
-
-protected:
-	gl::GlslProgRef		mShader;
-	gl::BatchRef		mBatch;
-	bool				mFocused = false;
-	ci::Anim<float>		mFocusedValue = 0.0f;
-	bool				mSelected = false;
-	ci::Anim<float>		mSelectedValue = 0.0f;
-	ci::vec3			mPosition;
-};
-
-//! \class UiBox
-//!
-//!
-class UiBox : public UiIntersectable {
-public:
-	UiBox() {}
-
-	UiBox(const vec3 &center, const vec3 &size, const gl::GlslProgRef &shader) {
-		vec3 min = center - 0.5f*size;
-		vec3 max = center + 0.5f*size;
-		mBox = AxisAlignedBox(min, max);
-		mShader = shader;
-		mBatch = gl::Batch::create(geom::Cube().size(size) >> geom::Translate(center), shader);
-		mPosition = center;
-	}
-
-	virtual bool intersects(const ci::Ray &ray) const override {
-		bool result = false;
-		float t0 = std::numeric_limits<float>::min();
-		float t1 = std::numeric_limits<float>::min();
-		if (mBox.intersect(ray, &t0, &t1) && (t0 > 0.0f)) {
-			result = true;
-		}
-		return result;
-	}
-
-	virtual void draw() {
-		gl::ScopedDepth scopedDepth(false);
-
-		gl::ScopedBlendAlpha scopeBlend;
-		gl::ScopedColor scopedColor(getColor());
-		mBatch->draw();
-	}
-protected:
-	AxisAlignedBox mBox;
-};
-
-
-class VideodrommVRApp : public App {
-
-public:
-	void						setup() override;
-	void						keyDown(KeyEvent event);
-	void						mouseDown(MouseEvent event) override;
-	void						mouseDrag(MouseEvent event) override;
-	void						update() override;
-	void						draw() override;
-	void						fileDrop(FileDropEvent event) override;
-	void						cleanup() override;
-private:
-	// Settings
-	VDSettingsRef				mVDSettings;
-	// Session
-	VDSessionRef				mVDSession;
-	// Log
-	VDLogRef					mVDLog;
-	// Animation
-	VDAnimationRef				mVDAnimation;
-
-	VDTextureList				mTexs;
-	fs::path					mTexturesFilepath;
-	int							i, x;
-	// Cinder VR
-	ci::vr::Context				*mVrContext = nullptr;
-	ci::vr::Hmd					*mHmd = nullptr;
-	bool						mCyclopsMirroring = false;
-	CameraPersp					mCamera;
-
-	bool						mRecalcOrigin = false;
-
-	const ci::vr::Controller	*mController1 = nullptr;
-	const ci::vr::Controller	*mController2 = nullptr;
-
-	gl::BatchRef				mGridBox;
-	gl::BatchRef				mGridLines;
-
-	std::vector<UiIntersectablePtr>	mShapes;
-	uint32_t						mShapeIndex = 0;
-
-	void	onControllerConnect(const ci::vr::Controller *controller);
-	void	onControllerDisconnect(const ci::vr::Controller *controller);
-	void	onButtonDown(const ci::vr::Controller::Button *button);
-	void	onButtonUp(const ci::vr::Controller::Button *button);
-
-	void	initGrid(const gl::GlslProgRef &shader);
-	void	initShapes(const gl::GlslProgRef &shader);
-
-	void	drawScene();
-};
 void VideodrommVRApp::initGrid(const gl::GlslProgRef &shader)
 {
 	vec3 size = vec3(100, 20, 100);
@@ -238,22 +69,32 @@ void VideodrommVRApp::setup()
 	mVDSettings = VDSettings::create();
 	// Session
 	mVDSession = VDSession::create(mVDSettings);
+	// Utils
+	mVDUtils = VDUtils::create(mVDSettings);
 	// Animation
 	mVDAnimation = VDAnimation::create(mVDSettings, mVDSession);
-	// initialize 
-#if (defined(  CINDER_MSW) )
-	mTexturesFilepath = getAssetPath("") / "defaulttextures.xml";
-#else
-	mTexturesFilepath = getAssetPath("") / "defaulttexturesquicktime.xml";
-#endif
-	if (fs::exists(mTexturesFilepath)) {
+	// Message router
+	mVDRouter = VDRouter::create(mVDSettings, mVDAnimation, mVDSession);
+	// Mix
+
+	mMixesFilepath = getAssetPath("") / mVDSettings->mAssetsPath / "mixes.xml";
+	if (fs::exists(mMixesFilepath)) {
 		// load textures from file if one exists
-		mTexs = VDTexture::readSettings(mVDAnimation, loadFile(mTexturesFilepath));
+		mMixes = VDMix::readSettings(mVDSettings, mVDAnimation, mVDRouter, loadFile(mMixesFilepath));
 	}
 	else {
 		// otherwise create a texture from scratch
-		mTexs.push_back(TextureAudio::create(mVDAnimation));
+		mMixes.push_back(VDMix::create(mVDSettings, mVDAnimation, mVDRouter));
 	}
+	mMixes[0]->setLeftFboIndex(2);
+	mMixes[0]->setRightFboIndex(1);
+	mVDAnimation->tapTempo();
+	// UI
+	mVDUI = VDUI::create(mVDSettings, mMixes[0], mVDRouter, mVDAnimation, mVDSession);
+	setFrameRate(mVDSession->getTargetFps());
+	// maximize fps
+	disableFrameRate();
+
 	// Cinder VR
 	mCamera.lookAt(vec3(0, 0, 3), vec3(0, 0, 0));
 
@@ -296,6 +137,16 @@ void VideodrommVRApp::setup()
 	auto shader = gl::getStockShader(gl::ShaderDef().color());
 	initGrid(shader);
 	initShapes(shader);
+}
+void VideodrommVRApp::keyUp(KeyEvent event)
+{
+	// pass this key event to the warp editor first
+	if (!Warp::handleKeyUp(mWarps, event)) {
+		// let your application perform its keyUp handling here
+		if (!mVDAnimation->handleKeyUp(event)) {
+			// Animation did not handle the key, so handle it here
+		}
+	}
 }
 void VideodrommVRApp::keyDown(KeyEvent event)
 {
@@ -343,69 +194,28 @@ void VideodrommVRApp::keyDown(KeyEvent event)
 }
 void VideodrommVRApp::fileDrop(FileDropEvent event)
 {
-	int index = 1;
-	string ext = "";
-	// use the last of the dropped files
-	boost::filesystem::path mPath = event.getFile(event.getNumFiles() - 1);
+	int index = (int)(event.getX() / (mVDSettings->uiElementWidth + mVDSettings->uiMargin));// +1;
+	//ci::fs::exists(path)
+	//ci::fs::path
+	ci::fs::path mPath = event.getFile(event.getNumFiles() - 1);
 	string mFile = mPath.string();
-	int dotIndex = mFile.find_last_of(".");
-	int slashIndex = mFile.find_last_of("\\");
-	bool found = false;
-
-	if (dotIndex != std::string::npos && dotIndex > slashIndex) ext = mFile.substr(mFile.find_last_of(".") + 1);
-
-	if (ext == "wav" || ext == "mp3")
-	{
-		for (auto tex : mTexs)
-		{
-			if (!found) {
-				if (tex->getType() == VDTexture::AUDIO) {
-					tex->loadFromFullPath(mFile);
-					found = true;
-				}
-			}
-		}
+	if (mMixes[0]->loadFileFromAbsolutePath(mFile, index) > -1) {
+		// load success
+		// reset zoom
+		mVDAnimation->controlValues[22] = 1.0f;
 	}
-	else if (ext == "png" || ext == "jpg")
-	{
-		for (auto tex : mTexs)
-		{
-			if (!found) {
-				if (tex->getType() == VDTexture::IMAGE) {
-					tex->loadFromFullPath(mFile);
-					found = true;
-				}
-			}
-		}
-	}
-	else if (ext == "mov")
-	{
-		for (auto tex : mTexs)
-		{
-			if (!found) {
-				if (tex->getType() == VDTexture::MOVIE) {
-					tex->loadFromFullPath(mFile);
-					found = true;
-				}
-			}
-		}
-	}
-	else if (ext == "")
-	{
-		// try loading image sequence from dir
-		for (auto tex : mTexs)
-		{
-			if (!found) {
-				if (tex->getType() == VDTexture::SEQUENCE) {
-					tex->loadFromFullPath(mFile);
-					found = true;
-				}
-			}
-		}
-	}
-
 }
-
+void VideodrommVRApp::setUIVisibility(bool visible)
+{
+	if (visible)
+	{
+		showCursor();
+	}
+	else
+	{
+		hideCursor();
+	}
+}
 void VideodrommVRApp::onControllerConnect(const ci::vr::Controller* controller)
 {
 	if (!controller) {
@@ -490,6 +300,16 @@ void VideodrommVRApp::onButtonUp(const ci::vr::Controller::Button *button)
 
 void VideodrommVRApp::update()
 {
+	mVDSettings->iFps = getAverageFps();
+	mVDSettings->sFps = toString(floor(mVDSettings->iFps));
+	mVDAnimation->update();
+	mVDRouter->update();
+	mMixes[0]->update();
+	// check if a shader has been received from websockets
+	if (mVDSettings->mShaderToLoad != "") {
+		mMixes[0]->loadFboFragmentShader(mVDSettings->mShaderToLoad, 1);
+	}
+
 	// Vive sometimes returns the wrong pose data initially so reinitialize the origin matrix after the first 60 frames.
 	if ((ci::vr::API_OPENVR == mVrContext->getApi()) && (!mRecalcOrigin) && (mHmd->getElapsedFrames() > 60)) {
 		mHmd->calculateOriginMatrix();
@@ -503,25 +323,53 @@ void VideodrommVRApp::update()
 }
 void VideodrommVRApp::cleanup()
 {
-	// save textures
-	VDTexture::writeSettings(mTexs, writeFile(mTexturesFilepath));
-
+	CI_LOG_V("shutdown");
+	ui::Shutdown();
+	// save warp settings
+	Warp::writeSettings(mWarps, writeFile(mWarpSettings));
+	mVDSettings->save();
+	mVDSession->save();
 	quit();
 }
-void VideodrommVRApp::mouseDown(MouseEvent event)
+void VideodrommVRApp::resize() {
+	CI_LOG_V("resizeWindow");
+	mVDUI->resize();
+
+	// tell the warps our window has been resized, so they properly scale up or down
+	Warp::handleResize(mWarps);
+
+	mVDSettings->iResolution.x = mVDSettings->mRenderWidth;
+	mVDSettings->iResolution.y = mVDSettings->mRenderHeight;
+}
+void VideodrommVRApp::mouseMove(MouseEvent event)
 {
-	for (auto tex : mTexs)
-	{
-		tex->setXLeft(event.getX());
-		tex->setYTop(event.getY());
+	// pass this mouse event to the warp editor first
+	if (!Warp::handleMouseMove(mWarps, event)) {
+		// let your application perform its mouseMove handling here
 	}
 }
+
+void VideodrommVRApp::mouseDown(MouseEvent event)
+{
+	// pass this mouse event to the warp editor first
+	if (!Warp::handleMouseDown(mWarps, event)) {
+		// let your application perform its mouseDown handling here
+		mVDAnimation->controlValues[21] = event.getX() / getWindowWidth();
+	}
+}
+
 void VideodrommVRApp::mouseDrag(MouseEvent event)
 {
-	for (auto tex : mTexs)
-	{
-		tex->setXRight(event.getX());
-		tex->setYBottom(event.getY());
+	// pass this mouse event to the warp editor first
+	if (!Warp::handleMouseDrag(mWarps, event)) {
+		// let your application perform its mouseDrag handling here
+	}
+}
+void VideodrommVRApp::mouseUp(MouseEvent event)
+{
+	// pass this mouse event to the warp editor first
+	if (!Warp::handleMouseUp(mWarps, event)) {
+		// let your application perform its mouseUp handling here
 	}
 }
 void VideodrommVRApp::drawScene()
@@ -586,13 +434,7 @@ void VideodrommVRApp::drawScene()
 void VideodrommVRApp::draw()
 {
 	gl::clear( Color::black() );
-	i = 0;
-	for (auto tex : mTexs)
-	{
-		int x = 128 * i;
-		gl::draw(tex->getTexture(), Rectf(0 + x, 0, 128 + x, 128));
-		i++;
-	}
+
 	if (mHmd) {
 		mHmd->bind();
 		for (auto eye : mHmd->getEyes()) {
@@ -620,6 +462,8 @@ void VideodrommVRApp::draw()
 		gl::setMatrices(mCamera);
 		drawScene();
 	}
+	mVDUI->Run("UI", (int)getAverageFps());
+
 }
 void prepareSettings(App::Settings *settings)
 {
