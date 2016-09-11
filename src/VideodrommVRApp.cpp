@@ -91,6 +91,9 @@ void VideodrommVRApp::setup()
 	mVDAnimation->tapTempo();
 	// UI
 	mVDUI = VDUI::create(mVDSettings, mMixes[0], mVDRouter, mVDAnimation, mVDSession);
+	// UI fbo
+	gl::Fbo::Format format;
+	mUIFbo = gl::Fbo::create(1000, 800, format.colorTexture());
 	setFrameRate(mVDSession->getTargetFps());
 	// maximize fps
 	disableFrameRate();
@@ -133,8 +136,10 @@ void VideodrommVRApp::setup()
 
 	mVrContext->getSignalControllerButtonDown().connect(std::bind(&VideodrommVRApp::onButtonDown, this, std::placeholders::_1));
 	mVrContext->getSignalControllerButtonUp().connect(std::bind(&VideodrommVRApp::onButtonUp, this, std::placeholders::_1));
+	
+	//auto shader = gl::getStockShader(gl::ShaderDef().color());
+	auto shader = gl::GlslProg::create(mMixes[0]->getVertexShaderString(0), mMixes[0]->getFragmentShaderString(2));
 
-	auto shader = gl::getStockShader(gl::ShaderDef().color());
 	initGrid(shader);
 	initShapes(shader);
 }
@@ -190,6 +195,17 @@ void VideodrommVRApp::keyDown(KeyEvent event)
 		}
 	}
 			  break;
+	case KeyEvent::KEY_ESCAPE:
+		// quit the application
+		quit();
+		break;
+
+	case KeyEvent::KEY_h:
+		// mouse cursor
+		mVDSettings->mCursorVisible = !mVDSettings->mCursorVisible;
+		setUIVisibility(mVDSettings->mCursorVisible);
+		break;
+
 	}
 }
 void VideodrommVRApp::fileDrop(FileDropEvent event)
@@ -433,7 +449,7 @@ void VideodrommVRApp::drawScene()
 
 void VideodrommVRApp::draw()
 {
-	gl::clear( Color::black() );
+	gl::clear(Color::black());
 
 	if (mHmd) {
 		mHmd->bind();
@@ -461,6 +477,27 @@ void VideodrommVRApp::draw()
 		gl::viewport(getWindowSize());
 		gl::setMatrices(mCamera);
 		drawScene();
+	}
+	if (mVDSettings->mCursorVisible) {
+		renderUIToFbo();
+		gl::draw(mUIFbo->getColorTexture());
+	}
+
+
+}
+// Render the UI into the FBO
+void VideodrommVRApp::renderUIToFbo()
+{
+	if (mVDUI->isReady()) {
+		// this will restore the old framebuffer binding when we leave this function
+		// on non-OpenGL ES platforms, you can just call mFbo->unbindFramebuffer() at the end of the function
+		// but this will restore the "screen" FBO on OpenGL ES, and does the right thing on both platforms
+		gl::ScopedFramebuffer fbScp(mUIFbo);
+		// setup the viewport to match the dimensions of the FBO
+		gl::ScopedViewport scpVp(ivec2(0), ivec2(mVDSettings->mFboWidth * mVDSettings->mUIZoom, mVDSettings->mFboHeight * mVDSettings->mUIZoom));
+		gl::clear();
+		gl::color(Color::white());
+
 	}
 	mVDUI->Run("UI", (int)getAverageFps());
 
