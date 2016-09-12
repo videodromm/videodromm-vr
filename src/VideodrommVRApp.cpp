@@ -45,6 +45,7 @@ void VideodrommVRApp::initGrid(const gl::GlslProgRef &shader)
 
 void VideodrommVRApp::initShapes(const gl::GlslProgRef &shader)
 {
+	mShapes.clear();
 	mShapes.push_back(UiIntersectablePtr(new UiBox(vec3(0, -0.001f, 0) + vec3(0, -0.0625f, 3), vec3(4, 0.125f, 4), shader)));
 	mShapes.push_back(UiIntersectablePtr(new UiBox(vec3(0, -0.001f, 0) + vec3(-4, -0.0625f, -4), vec3(4, 0.125f, 4), shader)));
 	mShapes.push_back(UiIntersectablePtr(new UiBox(vec3(0, -0.001f, 0) + vec3(4, -0.0625f, -4), vec3(4, 0.125f, 4), shader)));
@@ -93,7 +94,7 @@ void VideodrommVRApp::setup()
 	mVDUI = VDUI::create(mVDSettings, mMixes[0], mVDRouter, mVDAnimation, mVDSession);
 	// UI fbo
 	gl::Fbo::Format format;
-	mUIFbo = gl::Fbo::create(1000, 800, format.colorTexture());
+	//mUIFbo = gl::Fbo::create(1000, 800, format.colorTexture());
 	setFrameRate(mVDSession->getTargetFps());
 	// maximize fps
 	disableFrameRate();
@@ -136,12 +137,12 @@ void VideodrommVRApp::setup()
 
 	mVrContext->getSignalControllerButtonDown().connect(std::bind(&VideodrommVRApp::onButtonDown, this, std::placeholders::_1));
 	mVrContext->getSignalControllerButtonUp().connect(std::bind(&VideodrommVRApp::onButtonUp, this, std::placeholders::_1));
-	
-	//auto shader = gl::getStockShader(gl::ShaderDef().color());
-	auto shader = gl::GlslProg::create(mMixes[0]->getVertexShaderString(0), mMixes[0]->getFragmentShaderString(2));
+
+	auto shader = gl::getStockShader(gl::ShaderDef().color());
+	mShader = gl::GlslProg::create(mMixes[0]->getVertexShaderString(0), mMixes[0]->getFragmentShaderString(0));
 
 	initGrid(shader);
-	initShapes(shader);
+	initShapes(mShader);
 }
 void VideodrommVRApp::keyUp(KeyEvent event)
 {
@@ -155,6 +156,7 @@ void VideodrommVRApp::keyUp(KeyEvent event)
 }
 void VideodrommVRApp::keyDown(KeyEvent event)
 {
+	int i = 0;
 	switch (event.getChar()) {
 	case '1': {
 		mCyclopsMirroring = false;
@@ -205,6 +207,28 @@ void VideodrommVRApp::keyDown(KeyEvent event)
 		mVDSettings->mCursorVisible = !mVDSettings->mCursorVisible;
 		setUIVisibility(mVDSettings->mCursorVisible);
 		break;
+	case KeyEvent::KEY_x:
+		i = 1;
+		break;
+	case KeyEvent::KEY_c:
+		i = 2;
+		break;
+	case KeyEvent::KEY_v:
+		i = 3;
+		break;
+	case KeyEvent::KEY_b:
+		i = 4;
+		break;
+	case KeyEvent::KEY_n:
+		i = 5;
+		break;
+	case KeyEvent::KEY_w:
+		i = 6;
+		break;
+	}
+	if (i > 0) {
+		mShader = gl::GlslProg::create(mMixes[0]->getVertexShaderString(0), mMixes[0]->getFragmentShaderString(i));
+		initShapes(mShader);
 
 	}
 }
@@ -325,7 +349,18 @@ void VideodrommVRApp::update()
 	if (mVDSettings->mShaderToLoad != "") {
 		mMixes[0]->loadFboFragmentShader(mVDSettings->mShaderToLoad, 1);
 	}
-
+	mShader->uniform("iGlobalTime", mVDSettings->iGlobalTime);
+	//mShader->uniform("iResolution", vec3(mVDSettings->mPreviewFboWidth, mVDSettings->mPreviewFboHeight, 1.0));
+	mShader->uniform("iResolution", vec3(4, 0.125f, 3));
+	mShader->uniform("iChannelResolution", mVDSettings->iChannelResolution, 4);
+	mShader->uniform("iMouse", vec4(mVDSettings->mRenderPosXY.x, mVDSettings->mRenderPosXY.y, mVDSettings->iMouse.z, mVDSettings->iMouse.z));//iMouse =  Vec3i( event.getX(), mRenderHeight - event.getY(), 1 );
+	mShader->uniform("iChannel0", 0);
+	mShader->uniform("iChannel1", 1);
+	mShader->uniform("iChannel2", 2);
+	for (auto s : mShapes)
+	{
+		if (s->getSelected()) mVDSettings->mMsg = "Selected " + toString(s->getPosition());
+	}
 	// Vive sometimes returns the wrong pose data initially so reinitialize the origin matrix after the first 60 frames.
 	if ((ci::vr::API_OPENVR == mVrContext->getApi()) && (!mRecalcOrigin) && (mHmd->getElapsedFrames() > 60)) {
 		mHmd->calculateOriginMatrix();
@@ -479,29 +514,31 @@ void VideodrommVRApp::draw()
 		drawScene();
 	}
 	if (mVDSettings->mCursorVisible) {
-		renderUIToFbo();
-		gl::draw(mUIFbo->getColorTexture());
+		//renderUIToFbo();
+		//gl::draw(mUIFbo->getColorTexture());
+		mVDUI->Run("UI", (int)getAverageFps());
+
 	}
 
 
 }
 // Render the UI into the FBO
-void VideodrommVRApp::renderUIToFbo()
-{
-	if (mVDUI->isReady()) {
-		// this will restore the old framebuffer binding when we leave this function
-		// on non-OpenGL ES platforms, you can just call mFbo->unbindFramebuffer() at the end of the function
-		// but this will restore the "screen" FBO on OpenGL ES, and does the right thing on both platforms
-		gl::ScopedFramebuffer fbScp(mUIFbo);
-		// setup the viewport to match the dimensions of the FBO
-		gl::ScopedViewport scpVp(ivec2(0), ivec2(mVDSettings->mFboWidth * mVDSettings->mUIZoom, mVDSettings->mFboHeight * mVDSettings->mUIZoom));
-		gl::clear();
-		gl::color(Color::white());
-
-	}
-	mVDUI->Run("UI", (int)getAverageFps());
-
-}
+//void VideodrommVRApp::renderUIToFbo()
+//{
+//	if (mVDUI->isReady()) {
+//		// this will restore the old framebuffer binding when we leave this function
+//		// on non-OpenGL ES platforms, you can just call mFbo->unbindFramebuffer() at the end of the function
+//		// but this will restore the "screen" FBO on OpenGL ES, and does the right thing on both platforms
+//		gl::ScopedFramebuffer fbScp(mUIFbo);
+//		// setup the viewport to match the dimensions of the FBO
+//		gl::ScopedViewport scpVp(ivec2(0), ivec2(mVDSettings->mFboWidth * mVDSettings->mUIZoom, mVDSettings->mFboHeight * mVDSettings->mUIZoom));
+//		gl::clear();
+//		gl::color(Color::white());
+//
+//	}
+//	mVDUI->Run("UI", (int)getAverageFps());
+//
+//}
 void prepareSettings(App::Settings *settings)
 {
 	settings->setTitle("Cinder VR - Videodromm");

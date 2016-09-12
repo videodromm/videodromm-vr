@@ -1,6 +1,7 @@
 #include "cinder/app/App.h"
 #include "cinder/app/RendererGl.h"
 #include "cinder/gl/gl.h"
+#include "cinder/gl/GlslProg.h"
 #include "cinder/AxisAlignedBox.h"
 #include "cinder/Log.h"
 #include "cinder/Rand.h"
@@ -185,10 +186,12 @@ private:
 	// fbo
 	void						renderSceneToFbo();
 	gl::FboRef					mRenderFbo;
-	void						renderUIToFbo();
-	gl::FboRef					mUIFbo;
+	//void						renderUIToFbo();
+	//gl::FboRef					mUIFbo;
 	unsigned int				mWarpFboIndex;
 	bool						mFadeInDelay;
+	// shaders
+	gl::GlslProgRef				mShader;
 	// Cinder VR
 	ci::vr::Context				*mVrContext = nullptr;
 	ci::vr::Hmd					*mHmd = nullptr;
