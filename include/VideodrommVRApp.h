@@ -17,16 +17,6 @@
 #include "VDSettings.h"
 // Session
 #include "VDSession.h"
-// Log
-#include "VDLog.h"
-// Utils
-#include "VDUtils.h"
-// Message router
-#include "VDRouter.h"
-// Animation
-#include "VDAnimation.h"
-// Mix
-#include "VDMix.h"
 // UI
 #include "VDUI.h"
 
@@ -155,28 +145,15 @@ public:
 	void keyDown(KeyEvent event) override;
 	void keyUp(KeyEvent event) override;
 
-	void updateWindowTitle();
 	void setUIVisibility(bool visible);
 private:
 	// Settings
 	VDSettingsRef				mVDSettings;
 	// Session
 	VDSessionRef				mVDSession;
-	// Log
-	VDLogRef					mVDLog;
-	// Utils
-	VDUtilsRef					mVDUtils;
-	// Message router
-	VDRouterRef					mVDRouter;
-	// Animation
-	VDAnimationRef				mVDAnimation;
+
 	// UI
 	VDUIRef						mVDUI;
-	//void						showVDUI(unsigned int fps);
-	// Mix
-	VDMixList					mMixes;
-	fs::path					mMixesFilepath;
-
 
 	// warping
 	gl::TextureRef				mImage;
@@ -184,10 +161,7 @@ private:
 	string						fileWarpsName;
 	fs::path					mWarpSettings;
 	// fbo
-	void						renderSceneToFbo();
 	gl::FboRef					mRenderFbo;
-	//void						renderUIToFbo();
-	//gl::FboRef					mUIFbo;
 	unsigned int				mWarpFboIndex;
 	bool						mFadeInDelay;
 	// shaders

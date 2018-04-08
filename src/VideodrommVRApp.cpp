@@ -70,28 +70,10 @@ void VideodrommVRApp::setup()
 	mVDSettings = VDSettings::create();
 	// Session
 	mVDSession = VDSession::create(mVDSettings);
-	// Utils
-	mVDUtils = VDUtils::create(mVDSettings);
-	// Animation
-	mVDAnimation = VDAnimation::create(mVDSettings, mVDSession);
-	// Message router
-	mVDRouter = VDRouter::create(mVDSettings, mVDAnimation, mVDSession);
-	// Mix
 
-	mMixesFilepath = getAssetPath("") / mVDSettings->mAssetsPath / "mixes.xml";
-	if (fs::exists(mMixesFilepath)) {
-		// load textures from file if one exists
-		mMixes = VDMix::readSettings(mVDSettings, mVDAnimation, mVDRouter, loadFile(mMixesFilepath));
-	}
-	else {
-		// otherwise create a texture from scratch
-		mMixes.push_back(VDMix::create(mVDSettings, mVDAnimation, mVDRouter));
-	}
-	mMixes[0]->setLeftFboIndex(2);
-	mMixes[0]->setRightFboIndex(1);
-	mVDAnimation->tapTempo();
+
 	// UI
-	mVDUI = VDUI::create(mVDSettings, mMixes[0], mVDRouter, mVDAnimation, mVDSession);
+	mVDUI = VDUI::create(mVDSettings, mVDSession);
 	// UI fbo
 	gl::Fbo::Format format;
 	//mUIFbo = gl::Fbo::create(1000, 800, format.colorTexture());
@@ -139,7 +121,7 @@ void VideodrommVRApp::setup()
 	mVrContext->getSignalControllerButtonUp().connect(std::bind(&VideodrommVRApp::onButtonUp, this, std::placeholders::_1));
 
 	auto shader = gl::getStockShader(gl::ShaderDef().color());
-	mShader = gl::GlslProg::create(mMixes[0]->getVertexShaderString(0), mMixes[0]->getFragmentShaderString(0));
+	//mShader = gl::GlslProg::create(mMixes[0]->getVertexShaderString(0), mMixes[0]->getFragmentShaderString(0));
 
 	initGrid(shader);
 	initShapes(mShader);
@@ -149,9 +131,7 @@ void VideodrommVRApp::keyUp(KeyEvent event)
 	// pass this key event to the warp editor first
 	if (!Warp::handleKeyUp(mWarps, event)) {
 		// let your application perform its keyUp handling here
-		if (!mVDAnimation->handleKeyUp(event)) {
-			// Animation did not handle the key, so handle it here
-		}
+		
 	}
 }
 void VideodrommVRApp::keyDown(KeyEvent event)
@@ -226,11 +206,10 @@ void VideodrommVRApp::keyDown(KeyEvent event)
 		i = 6;
 		break;
 	}
-	if (i > 0) {
+	/*if (i > 0) {
 		mShader = gl::GlslProg::create(mMixes[0]->getVertexShaderString(0), mMixes[0]->getFragmentShaderString(i));
 		initShapes(mShader);
-
-	}
+	}*/
 }
 void VideodrommVRApp::fileDrop(FileDropEvent event)
 {
@@ -239,11 +218,11 @@ void VideodrommVRApp::fileDrop(FileDropEvent event)
 	//ci::fs::path
 	ci::fs::path mPath = event.getFile(event.getNumFiles() - 1);
 	string mFile = mPath.string();
-	if (mMixes[0]->loadFileFromAbsolutePath(mFile, index) > -1) {
+	/*if (mMixes[0]->loadFileFromAbsolutePath(mFile, index) > -1) {
 		// load success
 		// reset zoom
 		mVDAnimation->controlValues[22] = 1.0f;
-	}
+	}*/
 }
 void VideodrommVRApp::setUIVisibility(bool visible)
 {
@@ -340,20 +319,13 @@ void VideodrommVRApp::onButtonUp(const ci::vr::Controller::Button *button)
 
 void VideodrommVRApp::update()
 {
-	mVDSettings->iFps = getAverageFps();
-	mVDSettings->sFps = toString(floor(mVDSettings->iFps));
-	mVDAnimation->update();
-	mVDRouter->update();
-	mMixes[0]->update();
-	// check if a shader has been received from websockets
-	if (mVDSettings->mShaderToLoad != "") {
-		mMixes[0]->loadFboFragmentShader(mVDSettings->mShaderToLoad, 1);
-	}
-	mShader->uniform("iGlobalTime", mVDSettings->iGlobalTime);
+	mVDSession->setFloatUniformValueByIndex(mVDSettings->IFPS, getAverageFps());
+	mVDSession->update();
+	
+	mShader->uniform("iGlobalTime", mVDSession->getFloatUniformValueByIndex(mVDSettings->ITIME));
 	//mShader->uniform("iResolution", vec3(mVDSettings->mPreviewFboWidth, mVDSettings->mPreviewFboHeight, 1.0));
 	mShader->uniform("iResolution", vec3(4, 0.125f, 3));
-	mShader->uniform("iChannelResolution", mVDSettings->iChannelResolution, 4);
-	mShader->uniform("iMouse", vec4(mVDSettings->mRenderPosXY.x, mVDSettings->mRenderPosXY.y, mVDSettings->iMouse.z, mVDSettings->iMouse.z));//iMouse =  Vec3i( event.getX(), mRenderHeight - event.getY(), 1 );
+	//mShader->uniform("iMouse", vec3(mVDAnimation->getFloatUniformValueByIndex(35), mVDAnimation->getFloatUniformValueByIndex(36), mVDAnimation->getFloatUniformValueByIndex(37)));
 	mShader->uniform("iChannel0", 0);
 	mShader->uniform("iChannel1", 1);
 	mShader->uniform("iChannel2", 2);
@@ -389,8 +361,6 @@ void VideodrommVRApp::resize() {
 	// tell the warps our window has been resized, so they properly scale up or down
 	Warp::handleResize(mWarps);
 
-	mVDSettings->iResolution.x = mVDSettings->mRenderWidth;
-	mVDSettings->iResolution.y = mVDSettings->mRenderHeight;
 }
 void VideodrommVRApp::mouseMove(MouseEvent event)
 {
@@ -405,7 +375,7 @@ void VideodrommVRApp::mouseDown(MouseEvent event)
 	// pass this mouse event to the warp editor first
 	if (!Warp::handleMouseDown(mWarps, event)) {
 		// let your application perform its mouseDown handling here
-		mVDAnimation->controlValues[21] = event.getX() / getWindowWidth();
+		
 	}
 }
 
